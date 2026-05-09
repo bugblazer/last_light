@@ -6,8 +6,9 @@ const CHAT_FONT_SIZE = 18;
 const CHAT_FONT_FAMILY = "Arial";
 const CHAT_MONOSPACE_FONT_FAMILY = "Courier New, monospace";
 const CHAT_TEXT_COLOR = "white";
-const CHAT_INPUT_HEIGHT = 50;
-const CHAT_BOTTOM_MARGIN = 210; // Distance from bottom of screen to chat input (above inventory bar)
+const CHAT_INPUT_HEIGHT = 44;
+const CHAT_BOTTOM_MARGIN = 185; // Distance from bottom of screen to chat input (above inventory bar)
+const CHAT_LEFT_MARGIN = 90;
 
 interface ChatMessage {
   playerId: number;
@@ -25,8 +26,8 @@ export class ChatWidget {
   private readonly CHAT_MESSAGE_TIMEOUT = 10000;
   private readonly MAX_MESSAGE_LENGTH = 60;
   private readonly MAX_HISTORY_LENGTH = 50;
-  private readonly CHAT_WIDTH = 840;
-  private readonly CHARS_PER_LINE = 100;
+  private readonly CHAT_WIDTH = 420;
+  private readonly CHARS_PER_LINE = 45;
 
   constructor() {
     this.autocomplete = new CommandAutocomplete();
@@ -242,13 +243,14 @@ export class ChatWidget {
     const totalHeight =
       processedMessages.reduce((acc, msg) => acc + msg.lineCount * lineHeight, 0) + padding * 2;
 
-    // Position the chat box above the inventory bar
+    // Position the chat box on the lower-left side
+    const x = CHAT_LEFT_MARGIN;
     const y = ctx.canvas.height - CHAT_BOTTOM_MARGIN - totalHeight;
 
     // Draw background
     if (messages.length > 0) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      this.roundRect(ctx, (ctx.canvas.width - width) / 2, y - 16, width, totalHeight, 8);
+      ctx.fillStyle = "rgba(70, 70, 70, 0.45)";
+      this.roundRect(ctx, x, y - 16, width, totalHeight, 8);
       ctx.fill();
     }
 
@@ -272,7 +274,7 @@ export class ChatWidget {
 
       // Render each line of the message
       chat.lines.forEach((line) => {
-        ctx.fillText(line, (ctx.canvas.width - width) / 2 + padding, currentY);
+        ctx.fillText(line, x + padding, currentY);
         currentY += lineHeight;
       });
       // Move back up to prepare for the next message
@@ -284,7 +286,7 @@ export class ChatWidget {
     if (!this.showChatInput) return;
 
     const width = this.CHAT_WIDTH;
-    const x = (ctx.canvas.width - width) / 2;
+    const x = CHAT_LEFT_MARGIN;
     const y = ctx.canvas.height - CHAT_BOTTOM_MARGIN;
 
     // Draw input background
@@ -323,7 +325,7 @@ export class ChatWidget {
     if (suggestions.length === 0) return;
 
     const width = this.CHAT_WIDTH;
-    const x = (ctx.canvas.width - width) / 2;
+    const x = CHAT_LEFT_MARGIN;
 
     const lineHeight = 28;
     const padding = 8;
@@ -334,7 +336,7 @@ export class ChatWidget {
     const y = ctx.canvas.height - CHAT_BOTTOM_MARGIN - height - 4;
 
     // Draw background
-    ctx.fillStyle = "rgba(30, 30, 30, 0.95)";
+    ctx.fillStyle = "rgba(70, 70, 70, 0.45)";
     this.roundRect(ctx, x, y, width, height, 8);
     ctx.fill();
 
