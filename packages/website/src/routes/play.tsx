@@ -53,6 +53,12 @@ function GameClientLoader() {
   const [currentPlayerName, setCurrentPlayerName] = useState<string>("");
   const [currentPlayerColor, setCurrentPlayerColor] = useState<string>("none");
 
+  const ADMIN_PLAYER_NAMES = ["idare"];
+
+  const isAdminPlayer = ADMIN_PLAYER_NAMES.includes(
+    currentPlayerName || savedDisplayName
+  );
+
   const handleLeaveGame = () => {
     // Clean up game client before leaving
     if (sceneManagerRef.current) {
@@ -360,20 +366,20 @@ function GameClientLoader() {
             <path d="M12 8h.01" />
           </svg>
         </Button>
-        {import.meta.env.VITE_LOCAL === "true" && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowSpawnPanel(!showSpawnPanel)}
-              className="bg-purple-600 text-white hover:bg-purple-700 text-2xl"
-              title="Spawn Items Panel"
-            >
-              🎁
-            </Button>
-            <PredictionConfigPanel />
-          </>
-        )}
+          {import.meta.env.VITE_LOCAL === "true" && isAdminPlayer && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowSpawnPanel(!showSpawnPanel)}
+                className="bg-purple-600 text-white hover:bg-purple-700 text-2xl"
+                title="Spawn Items Panel"
+              >
+                🎁
+              </Button>
+              <PredictionConfigPanel />
+            </>
+          )}
       </div>
 
       {/* Instruction Panel Modal */}
@@ -413,7 +419,7 @@ function GameClientLoader() {
       {gameClient && <CraftingPanel gameClient={gameClient} />}
 
       {/* Spawn Panel (Local only) */}
-      {import.meta.env.VITE_LOCAL === "true" && (
+      {import.meta.env.VITE_LOCAL === "true" && isAdminPlayer && (
         <SpawnPanel
           gameClient={gameClient}
           isOpen={showSpawnPanel}
