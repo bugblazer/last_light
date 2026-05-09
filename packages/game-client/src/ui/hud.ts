@@ -1,0 +1,811 @@
+import { GameState, getEntityById } from "@/state";
+import { getPlayer } from "@/util/get-player";
+import { MapManager } from "@/managers/map";
+import { ChatWidget } from "./chat-widget";
+import { Minimap } from "./minimap";
+import { FullScreenMap } from "./fullscreen-map";
+import { Leaderboard } from "./leaderboard";
+import { SoundManager } from "@/managers/sound-manager";
+import { AssetManager } from "@/managers/asset";
+import {
+  WavePanel,
+  TextPanel,
+  ResourcesPanel,
+  CarHealthPanel,
+  DeathScreenPanel,
+  GameMessagesPanel,
+  MuteButtonPanel,
+  CrateIndicatorsPanel,
+  SurvivorIndicatorsPanel,
+  HumanIndicatorsPanel,
+  ZombieLivesPanel,
+} from "./panels";
+import { getConfig } from "@shared/config";
+import { scaleHudValue, calculateHudScale } from "@/util/hud-scale";
+import { GameOverDialogUI } from "./game-over-dialog";
+import { InventoryBarUI } from "./inventory-bar";
+import { WeaponsHUD } from "@/ui/weapons-hud";
+import { InputManager } from "@/managers/input";
+import { PlayerClient } from "@/entities/player";
+import { InventoryItem } from "../../../game-shared/src/util/inventory";
+import { renderRadialProgressIndicator } from "@/util/radial-progress-indicator";
+
+const HUD_SETTINGS = {
+  GameMessages: {
+    padding: 0,
+    background: "transparent",
+    borderColor: "transparent",
+    borderWidth: 0,
+    font: "24px Arial",
+    textColor: "white",
+    top: 120,
+    gap: 40,
+    messageTimeout: 5000,
+  },
+  DeathScreen: {
+    padding: 0,
+    background: "transparent",
+    borderColor: "transparent",
+    borderWidth: 0,
+    font: "24px Arial",
+    textColor: "black",
+    overlayBackground: "rgba(0, 0, 0, 0.7)",
+    panelBackground: "white",
+    text: "Press any key to respawn",
+  },
+  // Note: CrateIndicators, SurvivorIndicators, and HumanIndicators settings
+  // are now loaded from getConfig().hud in the constructor
+  BottomRightPanels: {
+    right: 20,
+    bottom: 20,
+    gap: 8,
+    padding: 8,
+    background: "rgba(0, 0, 0, 0.8)",
+    borderColor: "rgba(255, 255, 255, 0.5)",
+    borderWidth: 2,
+    font: "14px Arial",
+    versionColor: "rgba(255, 255, 0, 0.8)",
+    fpsColor: "white",
+    pingColors: {
+      excellent: "rgb(0, 255, 0)", // Green: < 50ms
+      good: "rgb(255, 255, 0)", // Yellow: 50-100ms
+      fair: "rgb(255, 165, 0)", // Orange: 100-150ms
+      poor: "rgb(255, 0, 0)", // Red: > 150ms
+    },
+  },
+  MuteButton: {
+    // Base values - will be scaled dynamically
+    baseLeft: 300, // Position to the right of minimap (40 + 240 + 20)
+    baseBottom: 40, // Same bottom position as minimap
+    baseWidth: 40, // Reduced from 60
+    baseHeight: 40, // Reduced from 60
+    background: "rgba(0, 0, 0, 0.7)",
+    borderColor: "rgba(255, 255, 255, 0.5)",
+    borderWidth: 2,
+    hoverBackground: "rgba(0, 0, 0, 0.9)",
+    baseFont: 24, // Reduced from 36
+  },
+  Wave: {
+    width: 300,
+    height: 110,
+    padding: 12,
+    background: "rgba(0, 0, 0, 0.85)",
+    borderColor: "rgba(200, 50, 50, 0.8)", // Red border
+    borderWidth: 3,
+    font: "18px Arial",
+    timerFont: "bold 36px monospace", // Monospace for digital clock feel
+    modeFont: "14px Arial",
+    textColor: "rgba(255, 255, 255, 0.9)",
+    timerColor: "rgba(255, 50, 50, 1)", // Bright red for timer
+    modeColor: "rgba(200, 200, 200, 0.8)", // Subtle gray for mode text
+    right: 40,
+    top: 40,
+  },
+  Resources: {
+    padding: 12,
+    background: "rgba(0, 0, 0, 0.8)",
+    borderColor: "rgba(255, 255, 255, 0.5)",
+    borderWidth: 2,
+    font: "20px Arial",
+    spriteSize: 32,
+    iconGap: 12,
+    resourceGap: 8,
+    right: 40,
+    marginTop: 2, // Gap below clock
+  },
+  ZombieLives: {
+    padding: 10,
+    background: "rgba(0, 0, 0, 0.85)",
+    borderColor: "rgba(100, 200, 100, 0.8)", // Green border for zombie lives
+    borderWidth: 3,
+    font: "bold 28px monospace",
+    labelFont: "14px Arial",
+    textColor: "rgba(255, 255, 255, 0.9)",
+    livesColor: "rgba(100, 255, 100, 1)", // Bright green for lives count
+    marginTop: 8, // Gap below wave panel
+  },
+};
+
+export class Hud {
+  private showInstructions: boolean = false;
+  private mapManager: MapManager;
+  private chatWidget: ChatWidget;
+  private currentFps: number = 0;
+  private minimap: Minimap;
+  private fullscreenMap: FullScreenMap;
+  private leaderboard: Leaderboard;
+  private soundManager: SoundManager;
+  private assetManager: AssetManager;
+  private wavePanel: WavePanel;
+  private versionPanel: TextPanel;
+  private fpsPanel: TextPanel;
+  private pingPanel: TextPanel;
+  private resourcesPanel: ResourcesPanel;
+  private carHealthPanel: CarHealthPanel;
+  private deathScreenPanel: DeathScreenPanel;
+  private gameMessagesPanel: GameMessagesPanel;
+  private muteButtonPanel: MuteButtonPanel;
+  private crateIndicatorsPanel: CrateIndicatorsPanel;
+  private survivorIndicatorsPanel: SurvivorIndicatorsPanel;
+  private humanIndicatorsPanel: HumanIndicatorsPanel;
+  private zombieLivesPanel: ZombieLivesPanel;
+  private gameOverDialog: GameOverDialogUI;
+  private hotbar: InventoryBarUI;
+  private weaponsHud: WeaponsHUD;
+  private inputManager: InputManager;
+  private currentGameState: GameState | null = null;
+  private mouseX: number = 0;
+  private mouseY: number = 0;
+  private canvasHeight: number = 0;
+
+  constructor(
+    mapManager: MapManager,
+    soundManager: SoundManager,
+    assetManager: AssetManager,
+    gameOverDialog: GameOverDialogUI,
+    inputManager: InputManager,
+    sendDropItem: (slotIndex: number) => void,
+    sendSwapItems: (fromSlotIndex: number, toSlotIndex: number) => void
+  ) {
+    this.mapManager = mapManager;
+    this.soundManager = soundManager;
+    this.assetManager = assetManager;
+    this.gameOverDialog = gameOverDialog;
+    this.inputManager = inputManager;
+    this.chatWidget = new ChatWidget();
+
+    // Create getInventory function for hotbar that uses currentGameState
+    const getInventory = (): InventoryItem[] => {
+      if (!this.currentGameState || !this.currentGameState.playerId) {
+        return [];
+      }
+      const entity = getEntityById(
+        this.currentGameState,
+        this.currentGameState.playerId
+      );
+      // Validate entity is a PlayerClient before accessing inventory
+      if (entity && entity instanceof PlayerClient) {
+        return entity.getInventory();
+      }
+      return [];
+    };
+
+    // Initialize hotbar
+    this.hotbar = new InventoryBarUI(
+      this.assetManager,
+      this.inputManager,
+      getInventory,
+      sendDropItem,
+      sendSwapItems
+    );
+
+    // Initialize weapons HUD
+    this.weaponsHud = new WeaponsHUD(this.assetManager, this.inputManager, getInventory);
+
+    this.minimap = new Minimap(mapManager);
+    this.fullscreenMap = new FullScreenMap(mapManager);
+    this.leaderboard = new Leaderboard();
+
+    // Initialize wave panel (top right)
+    this.wavePanel = new WavePanel({
+      padding: HUD_SETTINGS.Wave.padding,
+      background: HUD_SETTINGS.Wave.background,
+      borderColor: HUD_SETTINGS.Wave.borderColor,
+      borderWidth: HUD_SETTINGS.Wave.borderWidth,
+      width: HUD_SETTINGS.Wave.width,
+      height: HUD_SETTINGS.Wave.height,
+      font: HUD_SETTINGS.Wave.font,
+      timerFont: HUD_SETTINGS.Wave.timerFont,
+      modeFont: HUD_SETTINGS.Wave.modeFont,
+      x: 0, // Will be calculated in render
+      y: 0, // Will be calculated in render
+      textColor: HUD_SETTINGS.Wave.textColor,
+      timerColor: HUD_SETTINGS.Wave.timerColor,
+      modeColor: HUD_SETTINGS.Wave.modeColor,
+    });
+
+    // Initialize bottom right panels
+    this.versionPanel = new TextPanel({
+      padding: HUD_SETTINGS.BottomRightPanels.padding,
+      background: HUD_SETTINGS.BottomRightPanels.background,
+      borderColor: HUD_SETTINGS.BottomRightPanels.borderColor,
+      borderWidth: HUD_SETTINGS.BottomRightPanels.borderWidth,
+      x: 0,
+      y: 0,
+      text: getConfig().meta.VERSION,
+      font: HUD_SETTINGS.BottomRightPanels.font,
+      textColor: HUD_SETTINGS.BottomRightPanels.versionColor,
+    });
+
+    this.fpsPanel = new TextPanel({
+      padding: HUD_SETTINGS.BottomRightPanels.padding,
+      background: HUD_SETTINGS.BottomRightPanels.background,
+      borderColor: HUD_SETTINGS.BottomRightPanels.borderColor,
+      borderWidth: HUD_SETTINGS.BottomRightPanels.borderWidth,
+      x: 0,
+      y: 0,
+      text: "0 FPS",
+      font: HUD_SETTINGS.BottomRightPanels.font,
+      textColor: HUD_SETTINGS.BottomRightPanels.fpsColor,
+    });
+
+    this.pingPanel = new TextPanel({
+      padding: HUD_SETTINGS.BottomRightPanels.padding,
+      background: HUD_SETTINGS.BottomRightPanels.background,
+      borderColor: HUD_SETTINGS.BottomRightPanels.borderColor,
+      borderWidth: HUD_SETTINGS.BottomRightPanels.borderWidth,
+      x: 0,
+      y: 0,
+      text: "0ms",
+      font: HUD_SETTINGS.BottomRightPanels.font,
+      textColor: HUD_SETTINGS.BottomRightPanels.pingColors.excellent,
+    });
+
+    // Initialize resources panel (below clock)
+    this.resourcesPanel = new ResourcesPanel(
+      {
+        padding: HUD_SETTINGS.Resources.padding,
+        background: HUD_SETTINGS.Resources.background,
+        borderColor: HUD_SETTINGS.Resources.borderColor,
+        borderWidth: HUD_SETTINGS.Resources.borderWidth,
+        x: 0,
+        y: 0,
+        font: HUD_SETTINGS.Resources.font,
+        spriteSize: HUD_SETTINGS.Resources.spriteSize,
+        iconGap: HUD_SETTINGS.Resources.iconGap,
+        resourceGap: HUD_SETTINGS.Resources.resourceGap,
+      },
+      this.assetManager
+    );
+
+    // Initialize car health panel (center top of screen)
+    // y position is now calculated dynamically in render() to center vertically more
+    this.carHealthPanel = new CarHealthPanel({
+      padding: 8,
+      background: "rgba(0, 0, 0, 0.85)",
+      borderColor: "rgba(255, 50, 50, 0.8)",
+      borderWidth: 3,
+      width: 200,
+      height: 16,
+      iconSize: 28,
+      iconGap: 8,
+      font: "24px Arial",
+      barBackgroundColor: "rgba(100, 0, 0, 0.5)",
+      barColor: "rgba(255, 50, 50, 1)",
+      y: 0, // Not used anymore, calculated dynamically
+    });
+
+    // Initialize death screen panel
+    this.deathScreenPanel = new DeathScreenPanel({
+      ...HUD_SETTINGS.DeathScreen,
+    });
+
+    // Initialize game messages panel
+    this.gameMessagesPanel = new GameMessagesPanel({
+      ...HUD_SETTINGS.GameMessages,
+    });
+
+    // Initialize mute button panel (will be positioned dynamically in render)
+    this.muteButtonPanel = new MuteButtonPanel(
+      {
+        padding: HUD_SETTINGS.BottomRightPanels.padding,
+        background: HUD_SETTINGS.MuteButton.background,
+        borderColor: HUD_SETTINGS.MuteButton.borderColor,
+        borderWidth: HUD_SETTINGS.MuteButton.borderWidth,
+        left: 0, // Will be set dynamically
+        bottom: 0, // Will be set dynamically
+        width: 0, // Will be set dynamically
+        height: 0, // Will be set dynamically
+        font: `${HUD_SETTINGS.MuteButton.baseFont}px Arial`, // Will be scaled dynamically
+        hoverBackground: HUD_SETTINGS.MuteButton.hoverBackground,
+      },
+      this.soundManager,
+      {
+        baseWidth: HUD_SETTINGS.MuteButton.baseWidth,
+        baseHeight: HUD_SETTINGS.MuteButton.baseHeight,
+        baseFont: HUD_SETTINGS.MuteButton.baseFont,
+        background: HUD_SETTINGS.MuteButton.background,
+        borderColor: HUD_SETTINGS.MuteButton.borderColor,
+        borderWidth: HUD_SETTINGS.MuteButton.borderWidth,
+        hoverBackground: HUD_SETTINGS.MuteButton.hoverBackground,
+      }
+    );
+
+    // Initialize crate indicators panel (using config values)
+    const hudCfg = getConfig().hud;
+    this.crateIndicatorsPanel = new CrateIndicatorsPanel(
+      {
+        padding: 0,
+        background: "transparent",
+        borderColor: "transparent",
+        borderWidth: 0,
+        arrowSize: hudCfg.crateIndicators.arrowSize,
+        arrowDistance: hudCfg.crateIndicators.arrowDistance,
+        arrowColor: hudCfg.crateIndicators.arrowColor,
+        crateSpriteSize: hudCfg.crateIndicators.spriteSize,
+        minDistance: hudCfg.crateIndicators.minDistance,
+      },
+      this.assetManager
+    );
+
+    // Initialize survivor indicators panel (using config values)
+    this.survivorIndicatorsPanel = new SurvivorIndicatorsPanel(
+      {
+        padding: 0,
+        background: "transparent",
+        borderColor: "transparent",
+        borderWidth: 0,
+        arrowSize: hudCfg.survivorIndicators.arrowSize,
+        arrowDistance: hudCfg.survivorIndicators.arrowDistance,
+        arrowColor: hudCfg.survivorIndicators.arrowColor,
+        survivorSpriteSize: hudCfg.survivorIndicators.spriteSize,
+        minDistance: hudCfg.survivorIndicators.minDistance,
+      },
+      this.assetManager
+    );
+
+    // Initialize human indicators panel (for zombie players in infection/battle royale)
+    this.humanIndicatorsPanel = new HumanIndicatorsPanel(
+      {
+        padding: 0,
+        background: "transparent",
+        borderColor: "transparent",
+        borderWidth: 0,
+        arrowSize: hudCfg.humanIndicators.arrowSize,
+        arrowDistance: hudCfg.humanIndicators.arrowDistance,
+        arrowColor: hudCfg.humanIndicators.arrowColor,
+        playerSpriteSize: hudCfg.humanIndicators.spriteSize,
+        minDistance: hudCfg.humanIndicators.minDistance,
+      },
+      this.assetManager
+    );
+
+    // Initialize zombie lives panel (for infection mode)
+    this.zombieLivesPanel = new ZombieLivesPanel({
+      padding: HUD_SETTINGS.ZombieLives.padding,
+      background: HUD_SETTINGS.ZombieLives.background,
+      borderColor: HUD_SETTINGS.ZombieLives.borderColor,
+      borderWidth: HUD_SETTINGS.ZombieLives.borderWidth,
+      font: HUD_SETTINGS.ZombieLives.font,
+      labelFont: HUD_SETTINGS.ZombieLives.labelFont,
+      textColor: HUD_SETTINGS.ZombieLives.textColor,
+      livesColor: HUD_SETTINGS.ZombieLives.livesColor,
+      x: 0, // Will be calculated in render
+      y: 0, // Will be calculated in render
+    });
+  }
+
+  public setRenderer(renderer: import("@/renderer").Renderer): void {
+    this.minimap.setRenderer(renderer);
+  }
+
+  public update(gameState: GameState): void {
+    this.currentGameState = gameState;
+    this.gameMessagesPanel.update();
+    this.chatWidget.update();
+  }
+
+  public toggleInstructions(): void {
+    this.showInstructions = !this.showInstructions;
+  }
+
+  public toggleFullscreenMap(): void {
+    this.fullscreenMap.toggle();
+  }
+
+  public isFullscreenMapOpen(): boolean {
+    return this.fullscreenMap.isOpen();
+  }
+
+  private getPingColor(ping: number): string {
+    if (ping < 50) return HUD_SETTINGS.BottomRightPanels.pingColors.excellent;
+    if (ping < 100) return HUD_SETTINGS.BottomRightPanels.pingColors.good;
+    if (ping < 150) return HUD_SETTINGS.BottomRightPanels.pingColors.fair;
+    return HUD_SETTINGS.BottomRightPanels.pingColors.poor;
+  }
+
+  public updateFps(fps: number): void {
+    this.currentFps = fps;
+    // Update FPS panel
+    this.fpsPanel.setText(`${fps} FPS`);
+  }
+
+  public render(ctx: CanvasRenderingContext2D, gameState: GameState): void {
+    this.currentGameState = gameState;
+    const { width, height } = ctx.canvas;
+
+    // Render indicators FIRST so they appear behind the panels that render after
+    this.crateIndicatorsPanel.render(ctx, gameState);
+    this.survivorIndicatorsPanel.render(ctx, gameState);
+    this.humanIndicatorsPanel.render(ctx, gameState); // Only renders for zombie players
+
+    // Calculate scaled minimap values once for reuse
+    const minimapSize = scaleHudValue(240, width, height); // MINIMAP_SETTINGS.size (reduced from 280, was 400 originally)
+    const minimapRight = scaleHudValue(40, width, height); // MINIMAP_SETTINGS.right
+    const minimapBottom = scaleHudValue(40, width, height); // MINIMAP_SETTINGS.bottom
+    const minimapLeft = width - minimapRight - minimapSize; // Calculate from right side
+
+    // Render minimap (will cover indicators where it overlaps)
+    this.minimap.render(ctx, gameState);
+
+    // Render car health panel at top center (will cover indicators where it overlaps)
+    this.carHealthPanel.render(ctx, gameState);
+
+    // Calculate wave panel position once for reuse
+    const waveScale = calculateHudScale(width, height);
+    const scaledWaveWidth = HUD_SETTINGS.Wave.width * waveScale;
+    const scaledWaveHeight = HUD_SETTINGS.Wave.height * waveScale;
+    const scaledWaveRight = scaleHudValue(HUD_SETTINGS.Wave.right, width, height);
+    const carHealthTopMargin = scaleHudValue(20, width, height);
+    const waveX = width - scaledWaveRight - scaledWaveWidth;
+    const waveY = carHealthTopMargin; // Same Y position as car health panel
+
+    // Check if current player is a zombie (zombies don't see resources panel)
+    const resourcesPlayer = getPlayer(gameState);
+    const isZombieForResources = resourcesPlayer?.isZombiePlayer?.() ?? false;
+
+    // Render resources panel (right side, vertically centered) with scaled dimensions
+    // Hide for zombie players - they don't collect resources
+    if (!isZombieForResources) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const resourcesSettings = HUD_SETTINGS.Resources;
+      const resourcesScale = calculateHudScale(width, height);
+      // Calculate panel dimensions for positioning
+      const scaledSpriteSize = resourcesSettings.spriteSize * resourcesScale;
+      const scaledResourceGap = resourcesSettings.resourceGap * resourcesScale;
+      const scaledPadding = resourcesSettings.padding * resourcesScale;
+      const scaledIconGap = resourcesSettings.iconGap * resourcesScale;
+      // Estimate panel width (sprite + gap + text width estimate)
+      const estimatedTextWidth = scaleHudValue(40, width, height); // Approximate text width
+      const maxContentWidth = scaledSpriteSize + scaledIconGap + estimatedTextWidth;
+      const resourcesPanelWidth = maxContentWidth + scaledPadding * 2;
+      const resourcesPanelHeight = scaledSpriteSize * 3 + scaledResourceGap * 2 + scaledPadding * 2;
+      // Position resources panel on the right side of screen
+      const scaledResourcesRight = scaleHudValue(0, width, height); // 20px from right edge
+      const scaledResourcesX = width - scaledResourcesRight - resourcesPanelWidth;
+      // Center vertically
+      const scaledResourcesY = (height - resourcesPanelHeight) / 3;
+      (this.resourcesPanel as any).resourcesSettings.x = scaledResourcesX;
+      (this.resourcesPanel as any).resourcesSettings.y = scaledResourcesY;
+      // Scale font and sprite size
+      const resourcesBaseFontSize = parseInt(resourcesSettings.font);
+      (this.resourcesPanel as any).resourcesSettings.font = `${
+        resourcesBaseFontSize * resourcesScale
+      }px Arial`;
+      (this.resourcesPanel as any).resourcesSettings.spriteSize =
+        resourcesSettings.spriteSize * resourcesScale;
+      (this.resourcesPanel as any).resourcesSettings.iconGap =
+        resourcesSettings.iconGap * resourcesScale;
+      (this.resourcesPanel as any).resourcesSettings.resourceGap =
+        resourcesSettings.resourceGap * resourcesScale;
+      (this.resourcesPanel as any).settings.padding = resourcesSettings.padding * resourcesScale;
+      (this.resourcesPanel as any).settings.borderWidth =
+        resourcesSettings.borderWidth * resourcesScale;
+      this.resourcesPanel.render(ctx, gameState);
+      ctx.restore();
+    }
+
+    // Render wave panel in top right with scaled dimensions, aligned with car health panel
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Update wave panel position and size
+    (this.wavePanel as any).waveSettings.x = waveX;
+    (this.wavePanel as any).waveSettings.y = waveY;
+    (this.wavePanel as any).waveSettings.width = scaledWaveWidth;
+    (this.wavePanel as any).waveSettings.height = scaledWaveHeight;
+    // Scale fonts
+    const baseFontSize = parseInt(HUD_SETTINGS.Wave.font);
+    const baseTimerFontSize = parseInt(HUD_SETTINGS.Wave.timerFont.match(/\d+/)?.[0] || "36");
+    (this.wavePanel as any).waveSettings.font = `${baseFontSize * waveScale}px Arial`;
+    (this.wavePanel as any).waveSettings.timerFont = `bold ${
+      baseTimerFontSize * waveScale
+    }px monospace`;
+    // Scale border width
+    (this.wavePanel as any).settings.borderWidth = HUD_SETTINGS.Wave.borderWidth * waveScale;
+    this.wavePanel.render(ctx, gameState);
+    ctx.restore();
+
+    // Render zombie lives panel below wave panel (infection mode only)
+    if (gameState.zombieLivesState) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const zombieLivesY = waveY + scaledWaveHeight + scaleHudValue(HUD_SETTINGS.ZombieLives.marginTop, width, height);
+      const zombieLivesWidth = this.zombieLivesPanel.getWidth(ctx, gameState);
+      const zombieLivesX = width - scaledWaveRight - zombieLivesWidth;
+      this.zombieLivesPanel.setPosition(zombieLivesX, zombieLivesY);
+      this.zombieLivesPanel.render(ctx, gameState);
+      ctx.restore();
+    }
+
+    // Render top panels (FPS, ping, version) at top-left, to the right of config button
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const topPanelsSettings = HUD_SETTINGS.BottomRightPanels;
+    // Menu buttons are at left-4 top-4 (16px), each button is ~40px wide with 8px gap
+    // Config button is the rightmost button, so account for all menu buttons + config button
+    const menuButtonsWidth = scaleHudValue(250, width, height); // Approximate width for all menu buttons including config
+    const startX =
+      scaleHudValue(16, width, height) + menuButtonsWidth + scaleHudValue(16, width, height); // 16px left + buttons + larger gap
+    const topY = scaleHudValue(16, width, height); // Align with top-4 (16px)
+    let currentX = startX;
+
+    // Render FPS panel (leftmost)
+    (this.fpsPanel as any).textSettings.x = currentX;
+    (this.fpsPanel as any).textSettings.y = topY;
+    this.fpsPanel.render(ctx, gameState);
+    currentX += this.fpsPanel.getWidth(ctx) + topPanelsSettings.gap;
+
+    // Render ping panel (middle) - lookup ping from current player
+    const player = getPlayer(gameState);
+    const ping = player ? player.getPing() : 0;
+    this.pingPanel.setText(`${Math.round(ping)}ms`);
+    (this.pingPanel as any).textSettings.textColor = this.getPingColor(ping);
+    (this.pingPanel as any).textSettings.x = currentX;
+    (this.pingPanel as any).textSettings.y = topY;
+    this.pingPanel.render(ctx, gameState);
+    currentX += this.pingPanel.getWidth(ctx) + topPanelsSettings.gap;
+
+    // Render version panel (rightmost)
+    (this.versionPanel as any).textSettings.x = currentX;
+    (this.versionPanel as any).textSettings.y = topY;
+    this.versionPanel.render(ctx, gameState);
+
+    ctx.restore();
+
+    // Render weapons HUD (only when F is held)
+    this.weaponsHud.render(ctx);
+
+    // Render game messages (player joined/died)
+    this.gameMessagesPanel.render(ctx, gameState);
+
+    // Render mute button
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.muteButtonPanel.updatePosition(width, height);
+    this.muteButtonPanel.render(ctx, gameState);
+    ctx.restore();
+
+    this.leaderboard.render(ctx, gameState);
+    this.chatWidget.render(ctx, gameState);
+
+    // Render hotbar (hide for zombie players - they can't use items)
+    const currentPlayer = getPlayer(gameState);
+    const isZombiePlayer = currentPlayer?.isZombiePlayer?.() ?? false;
+    const isInfectionMode = gameState.gameMode === "infection";
+    if (!isZombiePlayer) {
+      this.hotbar.render(ctx, gameState);
+    } else if (isInfectionMode) {
+      // Show health and stamina bars for zombie players in infection mode
+      this.hotbar.renderHealthAndStamina(ctx, gameState);
+    }
+
+    // Render death screen if player is dead and game is not over
+    if (!this.gameOverDialog.isGameOver()) {
+      this.deathScreenPanel.render(ctx, gameState);
+    }
+
+    // Render fullscreen map on top of everything else if open
+    this.fullscreenMap.render(ctx, gameState);
+  }
+
+  /**
+   * Render teleport progress indicator above player's head
+   */
+  public renderTeleportProgress(
+    ctx: CanvasRenderingContext2D,
+    playerPosition: { x: number; y: number },
+    progress: number
+  ): void {
+    // Position above player's head (offset by player height + padding)
+    const indicatorY = playerPosition.y - 20; // 16px player height + 4px padding
+    const indicatorX = playerPosition.x + 8; // Center on player (player is 16px wide)
+
+    renderRadialProgressIndicator(ctx, {
+      progress,
+      x: indicatorX,
+      y: indicatorY,
+      radius: 8,
+      progressColor: "rgba(100, 200, 255, 0.9)", // Blue for teleport
+      borderColor: "rgba(255, 255, 255, 0.8)",
+      borderWidth: 1.5,
+      backgroundColor: "rgba(0, 0, 0, 0.7)",
+      startAngle: -Math.PI / 2, // Start from top
+    });
+  }
+
+  /**
+   * Render pickup progress indicator above player's head
+   */
+  public renderPickupProgress(
+    ctx: CanvasRenderingContext2D,
+    playerPosition: { x: number; y: number },
+    progress: number
+  ): void {
+    // Position above player's head (offset by player height + padding)
+    const indicatorY = playerPosition.y - 20; // 16px player height + 4px padding
+    const indicatorX = playerPosition.x + 8; // Center on player (player is 16px wide)
+
+    renderRadialProgressIndicator(ctx, {
+      progress,
+      x: indicatorX,
+      y: indicatorY,
+      radius: 8,
+      progressColor: "rgba(100, 255, 100, 0.9)", // Green for pickup
+      borderColor: "rgba(255, 255, 255, 0.8)",
+      borderWidth: 1.5,
+      backgroundColor: "rgba(0, 0, 0, 0.7)",
+      startAngle: -Math.PI / 2, // Start from top
+    });
+  }
+
+  /**
+   * Render zombie spawn cooldown indicator above player's head
+   * Shows green progress filling up as the ability recharges
+   */
+  public renderZombieSpawnCooldown(
+    ctx: CanvasRenderingContext2D,
+    playerPosition: { x: number; y: number },
+    progress: number
+  ): void {
+    // Don't render if cooldown is ready
+    if (progress >= 1) {
+      return;
+    }
+
+    // Position above player's head (offset by player height + padding)
+    const indicatorY = playerPosition.y - 20; // 16px player height + 4px padding
+    const indicatorX = playerPosition.x + 8; // Center on player (player is 16px wide)
+
+    renderRadialProgressIndicator(ctx, {
+      progress,
+      x: indicatorX,
+      y: indicatorY,
+      radius: 8,
+      progressColor: "rgba(100, 255, 100, 0.9)", // Green for spawn cooldown
+      borderColor: "rgba(255, 255, 255, 0.8)",
+      borderWidth: 1.5,
+      backgroundColor: "rgba(0, 0, 0, 0.7)",
+      startAngle: -Math.PI / 2, // Start from top
+    });
+  }
+
+  public addMessage(message: string, color?: string): void {
+    this.gameMessagesPanel.addMessage(message, color);
+  }
+
+  public showPlayerDeath(playerId: string): void {
+    this.addMessage(`${playerId} has died`, "red");
+  }
+
+  public showPlayerJoined(displayName: string): void {
+    this.addMessage(`${displayName} has joined the game`, "white");
+  }
+
+  public setShowPlayerList(show: boolean): void {
+    this.leaderboard.setShow(show);
+  }
+
+  // Delegate chat methods to ChatWidget
+  public toggleChatInput(): void {
+    this.chatWidget.toggleChatInput();
+  }
+
+  public updateChatInput(key: string, shiftKey: boolean = false): void {
+    this.chatWidget.updateChatInput(key, shiftKey);
+  }
+
+  public getChatInput(): string {
+    return this.chatWidget.getChatInput();
+  }
+
+  public clearChatInput(): void {
+    this.chatWidget.clearChatInput();
+  }
+
+  public addChatMessage(playerId: number, message: string): void {
+    this.chatWidget.addChatMessage(playerId, message);
+  }
+
+  public saveChatMessage(message: string): void {
+    this.chatWidget.saveChatMessage(message);
+  }
+
+  public isHoveringInventory(): boolean {
+    return this.hotbar ? this.hotbar.isHovering() : false;
+  }
+
+  public isHoveringMuteButton(): boolean {
+    return this.muteButtonPanel.isMouseOver(this.mouseX, this.mouseY, this.canvasHeight);
+  }
+
+  public handleClick(x: number, y: number, canvasWidth: number, canvasHeight: number): boolean {
+    // Check fullscreen map clicks first (if open)
+    if (this.fullscreenMap.handleClick(x, y)) {
+      return true;
+    }
+
+    // Check if click is on weapons HUD (when F is held)
+    if (this.weaponsHud.handleClick(x, y, canvasWidth, canvasHeight)) {
+      return true;
+    }
+
+    // Check if click is on mute button
+    if (this.muteButtonPanel.handleClick(x, y, canvasHeight)) {
+      return true;
+    }
+
+    // Check if click is on hotbar
+    if (this.hotbar && this.hotbar.handleClick(x, y, canvasWidth, canvasHeight)) {
+      return true;
+    }
+
+    return false; // Click was not handled
+  }
+
+  public handleMouseMove(x: number, y: number, canvasWidth: number, canvasHeight: number): void {
+    if (this.hotbar) {
+      this.hotbar.handleMouseMove(x, y, canvasWidth, canvasHeight);
+    }
+
+    // Forward mouse move to fullscreen map for drag handling
+    if (this.fullscreenMap.isOpen()) {
+      this.fullscreenMap.handleMouseMove(x, y);
+    }
+  }
+
+  public handleMouseUp(x: number, y: number, canvasWidth: number, canvasHeight: number): void {
+    if (this.hotbar) {
+      this.hotbar.handleMouseUp(x, y, canvasWidth, canvasHeight);
+    }
+
+    // Forward mouse up to fullscreen map for drag handling
+    if (this.fullscreenMap.isOpen()) {
+      this.fullscreenMap.handleMouseUp();
+    }
+  }
+
+  public updateMousePosition(
+    x: number,
+    y: number,
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    this.mouseX = x;
+    this.mouseY = y;
+    this.canvasHeight = canvasHeight;
+
+    if (this.hotbar) {
+      this.hotbar.updateMousePosition(x, y, canvasWidth, canvasHeight);
+    }
+    if (this.weaponsHud) {
+      this.weaponsHud.updateMouse(x, y);
+    }
+  }
+
+  public selectWeaponByIndex(index: number): void {
+    if (this.weaponsHud) {
+      this.weaponsHud.selectWeaponByIndex(index);
+    }
+  }
+}

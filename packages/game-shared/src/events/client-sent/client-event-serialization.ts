@@ -1,0 +1,94 @@
+import { ClientSentEvents, type ClientSentEventType } from "../events";
+import { ArrayBufferWriter, BufferReader } from "../../util/buffer-serialization";
+import { CraftRequestEvent } from "./events/craft-request";
+import { PlayerInputEvent } from "./events/player-input";
+import { SetDisplayNameEvent } from "./events/set-display-name";
+import { MerchantBuyEvent } from "./events/merchant-buy";
+import { MerchantSellEvent } from "./events/merchant-sell";
+import { SendChatEvent } from "./events/send-chat";
+import { PlaceStructureEvent } from "./events/place-structure";
+import { PingEvent } from "./events/ping";
+import { PingUpdateEvent } from "./events/ping-update";
+import { NoPayloadEvent } from "./events/no-payload";
+import { DropItemEvent } from "./events/drop-item";
+import { ConsumeItemEvent } from "./events/consume-item";
+import { SelectInventorySlotEvent } from "./events/select-inventory-slot";
+import { SwapInventoryItemsEvent } from "./events/swap-inventory-items";
+import { InteractEvent } from "./events/interact";
+import { ChangePlayerColorEvent } from "./events/change-player-color";
+import { SpawnZombieEvent } from "./events/spawn-zombie";
+import { VoteGameModeEvent } from "./events/vote-game-mode";
+import {
+  serializeEvent,
+  deserializeEvent,
+  type IBufferWriter,
+} from "../shared-event-serialization";
+
+const CLIENT_EVENT_VALUES = new Set<string>(Object.values(ClientSentEvents));
+
+// Registry mapping event strings to event classes with serialization methods
+const eventRegistry: Record<string, IBufferWriter> = {
+  [ClientSentEvents.CRAFT_REQUEST]: CraftRequestEvent,
+  [ClientSentEvents.PLAYER_INPUT]: PlayerInputEvent,
+  [ClientSentEvents.SET_DISPLAY_NAME]: SetDisplayNameEvent,
+  [ClientSentEvents.MERCHANT_BUY]: MerchantBuyEvent,
+  [ClientSentEvents.MERCHANT_SELL]: MerchantSellEvent,
+  [ClientSentEvents.SEND_CHAT]: SendChatEvent,
+  [ClientSentEvents.PLACE_STRUCTURE]: PlaceStructureEvent,
+  [ClientSentEvents.PING]: PingEvent,
+  [ClientSentEvents.PING_UPDATE]: PingUpdateEvent,
+  [ClientSentEvents.START_CRAFTING]: NoPayloadEvent,
+  [ClientSentEvents.STOP_CRAFTING]: NoPayloadEvent,
+  [ClientSentEvents.REQUEST_FULL_STATE]: NoPayloadEvent,
+  [ClientSentEvents.REQUEST_PLAYER_ID]: NoPayloadEvent,
+  [ClientSentEvents.PLAYER_RESPAWN_REQUEST]: NoPayloadEvent,
+  [ClientSentEvents.TELEPORT_TO_BASE]: NoPayloadEvent,
+  [ClientSentEvents.DROP_ITEM]: DropItemEvent,
+  [ClientSentEvents.CONSUME_ITEM]: ConsumeItemEvent,
+  [ClientSentEvents.SELECT_INVENTORY_SLOT]: SelectInventorySlotEvent,
+  [ClientSentEvents.SWAP_INVENTORY_ITEMS]: SwapInventoryItemsEvent,
+  [ClientSentEvents.INTERACT]: InteractEvent,
+  [ClientSentEvents.CHANGE_PLAYER_COLOR]: ChangePlayerColorEvent,
+  [ClientSentEvents.SPAWN_ZOMBIE]: SpawnZombieEvent,
+  [ClientSentEvents.VOTE_GAME_MODE]: VoteGameModeEvent,
+};
+
+function isClientSentEvent(event: string): event is ClientSentEventType {
+  return CLIENT_EVENT_VALUES.has(event);
+}
+
+/**
+ * Serialize a client-sent event to an ArrayBuffer (for client-side use)
+ * Returns null if the event should be sent as JSON instead
+ */
+export function serializeClientEvent(event: string, args: any[]): ArrayBuffer | null {
+  return serializeEvent(
+    event,
+    args,
+    eventRegistry,
+    isClientSentEvent,
+    (size) => new ArrayBufferWriter(size),
+    256,
+    (event) => {
+      // Check if this event uses NoPayloadEvent serializer
+      const serializer = eventRegistry[event];
+      return serializer === NoPayloadEvent ? {} : undefined;
+    }
+  );
+}
+
+/**
+ * Deserialize a client-sent event from an ArrayBuffer (for server-side use)
+ * Returns null if the event should be deserialized as JSON instead
+ */
+export function deserializeClientEvent(event: string, buffer: ArrayBuffer): any[] | null {
+  return deserializeEvent(event, buffer, eventRegistry, isClientSentEvent, (event, buffer) => {
+    const serializer = eventRegistry[event];
+    // Check if this event uses NoPayloadEvent serializer
+    if (serializer === NoPayloadEvent) {
+      const data = serializer.deserializeFromBuffer(new BufferReader(buffer));
+      return [data];
+    }
+    return null;
+  });
+}

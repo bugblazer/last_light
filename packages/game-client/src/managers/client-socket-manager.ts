@@ -1,0 +1,614 @@
+import { ServerSentEvents, ClientSentEvents } from "@shared/events/events";
+import { GameOverEvent } from "../../../game-shared/src/events/server-sent/events/game-over-event";
+import { GameStateEvent } from "../../../game-shared/src/events/server-sent/events/game-state-event";
+import { GameStartedEvent } from "../../../game-shared/src/events/server-sent/events/game-started-event";
+import { GunEmptyEvent } from "../../../game-shared/src/events/server-sent/events/gun-empty-event";
+import { GunFiredEvent } from "../../../game-shared/src/events/server-sent/events/gun-fired-event";
+import { LootEvent } from "../../../game-shared/src/events/server-sent/events/loot-event";
+import { PlayerPickedUpItemEvent } from "../../../game-shared/src/events/server-sent/events/pickup-item-event";
+import { PlayerPickedUpResourceEvent } from "../../../game-shared/src/events/server-sent/events/pickup-resource-event";
+import { PlayerAttackedEvent } from "../../../game-shared/src/events/server-sent/events/player-attacked-event";
+import { PlayerDeathEvent } from "../../../game-shared/src/events/server-sent/events/player-death-event";
+import { PlayerDroppedItemEvent } from "../../../game-shared/src/events/server-sent/events/player-dropped-item-event";
+import { PlayerHurtEvent } from "../../../game-shared/src/events/server-sent/events/player-hurt-event";
+import { PlayerJoinedEvent } from "../../../game-shared/src/events/server-sent/events/player-joined-event";
+import { YourIdEvent } from "../../../game-shared/src/events/server-sent/events/your-id-event";
+import { ZombieAttackedEvent } from "../../../game-shared/src/events/server-sent/events/zombie-attacked-event";
+import { ZombieDeathEvent } from "../../../game-shared/src/events/server-sent/events/zombie-death-event";
+import { ZombieHurtEvent } from "../../../game-shared/src/events/server-sent/events/zombie-hurt-event";
+import { ZombieAlertedEvent } from "../../../game-shared/src/events/server-sent/events/zombie-alerted-event";
+import { PongEvent } from "../../../game-shared/src/events/server-sent/events/pong-event";
+import { Input } from "../../../game-shared/src/util/input";
+import { RecipeType } from "../../../game-shared/src/util/recipes";
+import { ServerUpdatingEvent } from "../../../game-shared/src/events/server-sent/events/server-updating-event";
+import { ChatMessageEvent } from "../../../game-shared/src/events/server-sent/events/chat-message-event";
+import { GameMessageEvent } from "../../../game-shared/src/events/server-sent/events/game-message-event";
+import { PlayerLeftEvent } from "../../../game-shared/src/events/server-sent/events/player-left-event";
+import { ExplosionEvent } from "../../../game-shared/src/events/server-sent/events/explosion-event";
+import { serializeClientEvent } from "@shared/events/client-sent/client-event-serialization";
+import { CoinPickupEvent } from "../../../game-shared/src/events/server-sent/events/coin-pickup-event";
+import { CarRepairEvent } from "../../../game-shared/src/events/server-sent/events/car-repair-event";
+import { WaveStartEvent } from "../../../game-shared/src/events/server-sent/events/wave-start-event";
+import { CraftEvent } from "../../../game-shared/src/events/server-sent/events/craft-event";
+import { BuildEvent } from "../../../game-shared/src/events/server-sent/events/build-event";
+import { BossStepEvent } from "../../../game-shared/src/events/server-sent/events/boss-step-event";
+import { BossSummonEvent } from "../../../game-shared/src/events/server-sent/events/boss-summon-event";
+import { BossSplitEvent } from "../../../game-shared/src/events/server-sent/events/boss-split-event";
+import { VersionMismatchEvent } from "../../../game-shared/src/events/server-sent/events/version-mismatch-event";
+import { UserBannedEvent } from "../../../game-shared/src/events/server-sent/events/user-banned-event";
+import { LightningBoltEvent } from "../../../game-shared/src/events/server-sent/events/lightning-bolt-event";
+import { ISocketAdapter } from "@shared/network/socket-adapter";
+import { IClientAdapter } from "@shared/network/client-adapter";
+import { createClientAdapter } from "@/network/adapter-factory";
+import { deserializeServerEvent } from "@shared/events/server-sent/server-event-serialization";
+import { getConfig } from "@shared/config";
+import { getGameAuthToken } from "@/util/cookie";
+
+export type EntityDto = { id: string } & any;
+
+const SERVER_EVENT_MAP = {
+  [ServerSentEvents.GAME_STATE_UPDATE]: GameStateEvent,
+  [ServerSentEvents.PLAYER_DEATH]: PlayerDeathEvent,
+  [ServerSentEvents.YOUR_ID]: YourIdEvent,
+  [ServerSentEvents.PLAYER_HURT]: PlayerHurtEvent,
+  [ServerSentEvents.PLAYER_ATTACKED]: PlayerAttackedEvent,
+  [ServerSentEvents.PLAYER_JOINED]: PlayerJoinedEvent,
+  [ServerSentEvents.ZOMBIE_DEATH]: ZombieDeathEvent,
+  [ServerSentEvents.ZOMBIE_HURT]: ZombieHurtEvent,
+  [ServerSentEvents.PLAYER_DROPPED_ITEM]: PlayerDroppedItemEvent,
+  [ServerSentEvents.PLAYER_PICKED_UP_ITEM]: PlayerPickedUpItemEvent,
+  [ServerSentEvents.PLAYER_PICKED_UP_RESOURCE]: PlayerPickedUpResourceEvent,
+  [ServerSentEvents.GAME_OVER]: GameOverEvent,
+  [ServerSentEvents.GUN_EMPTY]: GunEmptyEvent,
+  [ServerSentEvents.GUN_FIRED]: GunFiredEvent,
+  [ServerSentEvents.ZOMBIE_ATTACKED]: ZombieAttackedEvent,
+  [ServerSentEvents.ZOMBIE_ALERTED]: ZombieAlertedEvent,
+  [ServerSentEvents.LOOT]: LootEvent,
+  [ServerSentEvents.GAME_STARTED]: GameStartedEvent,
+  [ServerSentEvents.COIN_PICKUP]: CoinPickupEvent,
+  [ServerSentEvents.PLAYER_LEFT]: PlayerLeftEvent,
+  [ServerSentEvents.SERVER_UPDATING]: ServerUpdatingEvent,
+  [ServerSentEvents.PONG]: PongEvent,
+  [ServerSentEvents.CHAT_MESSAGE]: ChatMessageEvent,
+  [ServerSentEvents.GAME_MESSAGE]: GameMessageEvent,
+  [ServerSentEvents.EXPLOSION]: ExplosionEvent,
+  [ServerSentEvents.CAR_REPAIR]: CarRepairEvent,
+  [ServerSentEvents.WAVE_START]: WaveStartEvent,
+  [ServerSentEvents.CRAFT]: CraftEvent,
+  [ServerSentEvents.BUILD]: BuildEvent,
+  [ServerSentEvents.BOSS_STEP]: BossStepEvent,
+  [ServerSentEvents.BOSS_SUMMON]: BossSummonEvent,
+  [ServerSentEvents.BOSS_SPLIT]: BossSplitEvent,
+  [ServerSentEvents.VERSION_MISMATCH]: VersionMismatchEvent,
+  [ServerSentEvents.USER_BANNED]: UserBannedEvent,
+  [ServerSentEvents.LIGHTNING_BOLT]: LightningBoltEvent,
+  [ServerSentEvents.THUNDERSTORM_START]: GameMessageEvent,
+  [ServerSentEvents.THUNDERSTORM_END]: GameMessageEvent,
+} as const;
+
+export class ClientSocketManager {
+  private socket!: ISocketAdapter;
+  private clientAdapter!: IClientAdapter;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private onPingUpdate?: (ping: number) => void;
+  private isDisconnected: boolean = false;
+  private serverUrl: string;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = Infinity; // Keep trying indefinitely
+  private readonly RECONNECT_DELAY_MS = 1000; // 1 second delay
+  private readonly MAX_CONNECTION_ATTEMPTS = 10;
+  private readonly CONNECTION_TIMEOUT_MS = 3000;
+  private eventHandlers: Map<string, Array<(event: any) => void>> = new Map();
+  private socketDisconnectHandlers: Array<() => void> = [];
+  private connectionPromiseResolve?: () => void;
+  private connectionPromiseReject?: (error: Error) => void;
+  private connectionTimeout?: ReturnType<typeof setTimeout>;
+  private connectionResolved: boolean = false;
+  private connectHandler?: () => void;
+  private errorHandler?: (error: any) => void;
+  private PING_INTERVAL_MS = 500;
+  private isConnecting: boolean = false; // Track if we're currently attempting to connect
+  private shouldReconnect: boolean = true; // Flag to prevent reconnection (e.g., on version mismatch or ban)
+  private lastConnectionTime: number = 0; // Track when we last successfully connected
+
+  public on<K extends keyof typeof SERVER_EVENT_MAP>(eventType: K, handler: (event: any) => void) {
+    const eventKey = eventType as string;
+    if (!this.eventHandlers.has(eventKey)) {
+      this.eventHandlers.set(eventKey, []);
+    }
+    this.eventHandlers.get(eventKey)!.push(handler);
+    this.attachHandler(eventKey, handler);
+  }
+
+  constructor(serverUrl: string) {
+    this.serverUrl = serverUrl;
+  }
+
+  public connect(): Promise<void> {
+    // Prevent multiple simultaneous connection attempts
+    if (this.isConnecting) {
+      return new Promise((resolve, reject) => {
+        // Wait for the existing connection attempt to complete
+        const checkInterval = setInterval(() => {
+          if (!this.isConnecting) {
+            clearInterval(checkInterval);
+            if (this.isDisconnected) {
+              reject(new Error("Previous connection attempt failed"));
+            } else {
+              resolve();
+            }
+          }
+        }, 100);
+
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          reject(new Error("Connection check timeout"));
+        }, 30000);
+      });
+    }
+
+    return new Promise((resolve, reject) => {
+      const displayName = localStorage.getItem("displayName");
+
+      if (!displayName) {
+        reject(new Error("No display name found"));
+        return;
+      }
+
+      this.connectionPromiseResolve = resolve;
+      this.connectionPromiseReject = reject;
+      this.connectionResolved = false;
+      this.isConnecting = true;
+
+      this.attemptConnection(0);
+    });
+  }
+
+  private attemptConnection(attemptNumber: number): void {
+    if (attemptNumber >= this.MAX_CONNECTION_ATTEMPTS) {
+      const error = new Error(`Failed to connect after ${this.MAX_CONNECTION_ATTEMPTS} attempts`);
+      console.error(error.message);
+      if (this.connectionPromiseReject) {
+        this.connectionPromiseReject(error);
+      }
+      return;
+    }
+
+    if (attemptNumber > 0) {
+      // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
+      const delay = Math.min(this.RECONNECT_DELAY_MS * Math.pow(2, attemptNumber - 1), 10000);
+      setTimeout(() => {
+        this.performConnection(attemptNumber);
+      }, delay);
+    } else {
+      this.performConnection(attemptNumber);
+    }
+  }
+
+  private performConnection(attemptNumber: number): void {
+    const displayName = localStorage.getItem("displayName");
+
+    if (!displayName) {
+      if (this.connectionPromiseReject) {
+        this.connectionPromiseReject(new Error("No display name found"));
+      }
+      return;
+    }
+
+    // Clean up any existing connection
+    this.cleanupConnection();
+
+    // Create client adapter based on configuration and connect
+    this.clientAdapter = createClientAdapter();
+    const version = getConfig().meta.VERSION;
+
+    // Build connection URL with query params
+    const params = new URLSearchParams({
+      displayName,
+      version,
+    });
+
+    // Add game auth token if available (optional - allows anonymous play)
+    const gameAuthToken = getGameAuthToken();
+    if (gameAuthToken) {
+      params.set("gameAuthToken", gameAuthToken);
+    }
+
+    this.socket = this.clientAdapter.connect(
+      `${this.serverUrl}?${params.toString()}`,
+      {
+        // Ensure we create a new connection each time
+        forceNew: true,
+      }
+    );
+
+    this.registerStoredHandlers();
+
+    // Set up connection timeout
+    this.connectionTimeout = setTimeout(() => {
+      this.cleanupConnection();
+      this.isConnecting = false; // Reset connecting flag on timeout
+      this.attemptConnection(attemptNumber + 1);
+    }, this.CONNECTION_TIMEOUT_MS);
+
+    // Set up connection success handler
+    this.connectHandler = () => {
+      if (this.connectionResolved) {
+        return; // Already resolved, ignore duplicate calls
+      }
+
+      this.isDisconnected = false;
+      this.isConnecting = false; // Connection successful
+      this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+      this.shouldReconnect = true; // Re-enable reconnection on successful connection
+      this.lastConnectionTime = Date.now(); // Track successful connection time
+
+      // Clear timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = undefined;
+      }
+
+      // Mark as resolved and resolve the promise
+      this.connectionResolved = true;
+      if (this.connectionPromiseResolve) {
+        this.connectionPromiseResolve();
+      }
+    };
+
+    // Set up connection error handler
+    this.errorHandler = (error: any) => {
+      if (this.connectionResolved) {
+        return; // Already resolved, ignore errors
+      }
+
+      console.error("Connection error:", error);
+      this.cleanupConnection();
+      this.isConnecting = false; // Reset connecting flag on error
+      this.attemptConnection(attemptNumber + 1);
+    };
+
+    this.socket.on("connect", this.connectHandler);
+    this.socket.on("error", this.errorHandler);
+
+    // Set up disconnect handler (for after successful connection)
+    this.socket.on("disconnect", () => {
+      this.isDisconnected = true;
+      this.stopPingMeasurement();
+      this.socketDisconnectHandlers.forEach((handler) => {
+        try {
+          handler();
+        } catch (error) {
+          console.error("Error in socket disconnect handler", error);
+        }
+      });
+
+      // Only attempt reconnect if we should (not banned/version mismatch) and if we had a successful connection
+      // Check if we connected recently (within last 2 seconds) - if so, might be immediate disconnect
+      const timeSinceConnection = Date.now() - this.lastConnectionTime;
+      const wasRecentConnection = this.lastConnectionTime > 0 && timeSinceConnection < 2000;
+
+      if (!this.shouldReconnect) {
+        return; // Don't attempt reconnect if disabled
+      }
+
+      if (wasRecentConnection) {
+        // Still attempt reconnect but with a longer delay to avoid rapid reconnection loops
+        setTimeout(() => {
+          if (this.shouldReconnect && this.isDisconnected && !this.isConnecting) {
+            this.attemptReconnect();
+          }
+        }, this.RECONNECT_DELAY_MS);
+      } else {
+        // Normal disconnect, attempt reconnect
+        this.attemptReconnect();
+      }
+    });
+  }
+
+  private cleanupConnection(): void {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = undefined;
+    }
+
+    // Clear handler references
+    this.connectHandler = undefined;
+    this.errorHandler = undefined;
+
+    if (this.socket) {
+      try {
+        this.socket.disconnect();
+      } catch (error) {
+        // Ignore errors during cleanup
+      }
+    }
+
+    // Reset connection state
+    this.connectionResolved = false;
+    this.isConnecting = false;
+  }
+
+  public requestFullState(): void {
+    this.emitClientEvent(ClientSentEvents.REQUEST_FULL_STATE);
+  }
+
+  public requestPlayerId(): void {
+    // Request player ID from server
+    // The server should respond with YOUR_ID event
+    this.emitClientEvent(ClientSentEvents.REQUEST_PLAYER_ID);
+  }
+
+  private attemptReconnect(): void {
+    // Don't attempt reconnect if we're already connecting or if reconnection is disabled
+    if (this.isConnecting) {
+      return;
+    }
+
+    if (!this.shouldReconnect) {
+      return;
+    }
+
+    // Clear any existing reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      console.error("Max reconnect attempts reached, giving up");
+      return;
+    }
+
+    // Use fixed delay of 5 seconds instead of exponential backoff to avoid rapid reconnection
+    const delay = this.RECONNECT_DELAY_MS;
+    this.reconnectAttempts++;
+
+    this.reconnectTimeout = setTimeout(() => {
+      // Double-check that we should still reconnect
+      if (!this.shouldReconnect) {
+        return;
+      }
+
+      this.connect()
+        .then(() => {
+          // Successfully reconnected - request fresh player ID and full game state
+          this.requestPlayerId();
+          this.sendRequestFullState();
+          this.startPingMeasurement();
+        })
+        .catch((error) => {
+          console.error("Reconnection attempt failed:", error);
+          // Continue attempting reconnection only if we're not already connecting and should reconnect
+          if (!this.isConnecting && this.shouldReconnect) {
+            this.attemptReconnect();
+          }
+        });
+    }, delay);
+  }
+
+  private attachHandler(eventType: string, handler: (event: any) => void): void {
+    if (!this.socket) {
+      return;
+    }
+
+    this.socket.on(eventType as any, (decodedEvent: any) => {
+      const Ctor = (SERVER_EVENT_MAP as any)[eventType];
+      let eventInstance: any;
+
+      if (eventType === ServerSentEvents.GAME_STATE_UPDATE && decodedEvent instanceof ArrayBuffer) {
+        eventInstance = Ctor.deserializeFromBuffer(decodedEvent);
+      } else if (decodedEvent instanceof ArrayBuffer) {
+        const deserialized = deserializeServerEvent(eventType as string, decodedEvent);
+        if (deserialized !== null) {
+          eventInstance = new Ctor(deserialized[0]);
+        } else {
+          eventInstance = new Ctor(decodedEvent);
+        }
+      } else {
+        eventInstance = new Ctor(decodedEvent);
+      }
+
+      handler(eventInstance);
+    });
+  }
+
+  private registerStoredHandlers(): void {
+    this.eventHandlers.forEach((handlers, eventType) => {
+      handlers.forEach((handler) => this.attachHandler(eventType, handler));
+    });
+  }
+
+  public onSocketDisconnect(handler: () => void): void {
+    if (!this.socketDisconnectHandlers.includes(handler)) {
+      this.socketDisconnectHandlers.push(handler);
+    }
+  }
+
+  public startPingMeasurement(): void {
+    if (this.pingInterval) return;
+
+    // Send initial ping
+    this.sendPing();
+
+    // Set up interval for regular pings
+    this.pingInterval = setInterval(() => {
+      this.sendPing();
+    }, this.PING_INTERVAL_MS);
+  }
+
+  private stopPingMeasurement(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  private sendPing(): void {
+    // Date.now() returns Unix timestamp in milliseconds (UTC, timezone-independent)
+    this.emitClientEvent(ClientSentEvents.PING, Date.now());
+  }
+
+  public sendPingUpdate(latency: number): void {
+    this.emitClientEvent(ClientSentEvents.PING_UPDATE, latency);
+  }
+
+  public sendCraftRequest(recipe: RecipeType) {
+    this.emitClientEvent(ClientSentEvents.CRAFT_REQUEST, recipe);
+  }
+
+  public sendStartCrafting() {
+    this.emitClientEvent(ClientSentEvents.START_CRAFTING);
+  }
+
+  public sendStopCrafting() {
+    this.emitClientEvent(ClientSentEvents.STOP_CRAFTING);
+  }
+
+  public sendInput(input: Input) {
+    this.emitClientEvent(ClientSentEvents.PLAYER_INPUT, input);
+  }
+
+  public sendRequestFullState() {
+    this.emitClientEvent(ClientSentEvents.REQUEST_FULL_STATE);
+  }
+
+  public getIsDisconnected(): boolean {
+    return this.isDisconnected;
+  }
+
+  public sendMerchantBuy(merchantId: string, itemIndex: number) {
+    this.emitClientEvent(ClientSentEvents.MERCHANT_BUY, { merchantId, itemIndex });
+  }
+
+  public sendMerchantSell(merchantId: number, inventorySlot: number) {
+    this.emitClientEvent(ClientSentEvents.MERCHANT_SELL, { merchantId, inventorySlot });
+  }
+
+  public sendDropItem(slotIndex: number, amount?: number) {
+    const payload =
+      amount != null
+        ? {
+            slotIndex,
+            amount,
+          }
+        : { slotIndex };
+    this.emitClientEvent(ClientSentEvents.DROP_ITEM, payload);
+  }
+
+  public sendSwapItems(fromSlotIndex: number, toSlotIndex: number) {
+    this.emitClientEvent(ClientSentEvents.SWAP_INVENTORY_ITEMS, {
+      fromSlotIndex,
+      toSlotIndex,
+    });
+  }
+
+  public sendConsumeItem(itemType: string | null) {
+    this.emitClientEvent(ClientSentEvents.CONSUME_ITEM, { itemType });
+  }
+
+  public sendSelectInventorySlot(slotIndex: number) {
+    this.emitClientEvent(ClientSentEvents.SELECT_INVENTORY_SLOT, { slotIndex });
+  }
+
+  public sendInteract(targetEntityId?: number | null) {
+    this.emitClientEvent(ClientSentEvents.INTERACT, { targetEntityId });
+  }
+
+  public sendChatMessage(message: string) {
+    // Check if it's a command and include admin password from localStorage if available
+    const isCommand = message.trim().startsWith("/");
+    const adminPassword = isCommand ? localStorage.getItem("admin_password") : undefined;
+    
+    this.emitClientEvent(ClientSentEvents.SEND_CHAT, { 
+      message,
+      adminPassword: adminPassword || undefined
+    });
+  }
+
+  public sendDisplayName(displayName: string) {
+    this.emitClientEvent(ClientSentEvents.SET_DISPLAY_NAME, { displayName });
+  }
+
+  public requestRespawn() {
+    this.emitClientEvent(ClientSentEvents.PLAYER_RESPAWN_REQUEST);
+  }
+
+  public sendTeleportToBase() {
+    this.emitClientEvent(ClientSentEvents.TELEPORT_TO_BASE);
+  }
+
+  public sendPlayerColor(color: string) {
+    this.emitClientEvent(ClientSentEvents.CHANGE_PLAYER_COLOR, { color });
+  }
+
+  public sendVoteGameMode(mode: string) {
+    this.emitClientEvent(ClientSentEvents.VOTE_GAME_MODE, { mode });
+  }
+
+  public sendSpawnZombie(x: number, y: number) {
+    this.emitClientEvent(ClientSentEvents.SPAWN_ZOMBIE, { x, y });
+  }
+
+  public getSocket(): ISocketAdapter {
+    return this.socket;
+  }
+
+  /**
+   * Emit a client event with automatic serialization
+   * All client events should be serializable as binary buffers
+   */
+  private emitClientEvent(event: string, ...args: any[]): void {
+    const buffer = serializeClientEvent(event, args);
+    if (buffer !== null) {
+      this.socket.emit(event, buffer);
+    } else {
+      // This should never happen if all events are properly registered
+      console.error(
+        `Failed to serialize client event ${event} as binary buffer. Event may not be registered in eventRegistry.`
+      );
+      // Still emit as fallback, but this indicates a configuration error
+      this.socket.emit(event, ...args);
+    }
+  }
+
+  /**
+   * Disconnect from the game server and clean up resources
+   */
+  public disconnect(): void {
+    if (this.isDisconnected) {
+      return; // Already disconnected
+    }
+
+    // Disable reconnection when manually disconnecting
+    this.shouldReconnect = false;
+
+    // Clear reconnect timeout if we're manually disconnecting
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    this.stopPingMeasurement();
+    this.isConnecting = false; // Reset connecting flag
+
+    if (this.socket) {
+      this.socket.disconnect();
+      this.isDisconnected = true;
+    }
+  }
+
+  /**
+   * Disable reconnection (e.g., when version mismatch or ban is detected)
+   */
+  public disableReconnection(): void {
+    this.shouldReconnect = false;
+    // Clear any pending reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+  }
+}

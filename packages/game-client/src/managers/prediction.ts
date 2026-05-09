@@ -1,0 +1,256 @@
+import { Input } from "@shared/util/input";
+import Vector2 from "@shared/util/vector2";
+import PoolManager from "@shared/util/pool-manager";
+import { PlayerClient } from "@/entities/player";
+import { normalizeVector, isColliding } from "@shared/util/physics";
+import { ClientMovable } from "@/extensions/movable";
+import { ClientPositionable } from "@/extensions/positionable";
+import { ClientCollidable } from "@/extensions/collidable";
+import { getConfig } from "@shared/config";
+import { getPredictionConfig } from "@/config/client-prediction";
+import { ClientEntityBase } from "@/extensions/client-entity";
+import { Hitbox } from "@shared/util/hitbox";
+import { ReconciliationManager } from "./reconciliation-manager";
+import { ClientSnared } from "@/extensions/snared";
+import { itemRegistry } from "@shared/entities";
+
+type PredictionConfig = {
+  playerSpeed: number; // pixels per second
+  sprintMultiplier: number;
+};
+
+export class PredictionManager {
+  private reconciliationManager: ReconciliationManager;
+
+  constructor() {
+    this.reconciliationManager = new ReconciliationManager();
+  }
+
+  /**
+   * Get current prediction config (runtime-modifiable via window.config)
+   */
+  private getConfig(): PredictionConfig {
+    return getPredictionConfig();
+  }
+
+  /**
+   * Get the reconciliation manager
+   */
+  getReconciliationManager(): ReconciliationManager {
+    return this.reconciliationManager;
+  }
+
+  predictLocalPlayerMovement(
+    player: PlayerClient,
+    input: Input,
+    deltaSeconds: number,
+    collidables: number[][] | null = null,
+    entities: ClientEntityBase[] = [],
+  ): void {
+    if (deltaSeconds <= 0) return;
+
+    // If player is snared (e.g., by bear trap), cannot move at all
+    if (player.hasExt(ClientSnared)) {
+      return;
+    }
+
+    // Verify deltaTime matches server (should be FIXED_TIMESTEP for physics)
+    const expectedDelta = getConfig().simulation.FIXED_TIMESTEP;
+    const tolerance = 0.001;
+    if (Math.abs(deltaSeconds - expectedDelta) > tolerance) {
+      // Warn if deltaTime doesn't match expected fixed timestep
+      // This helps catch bugs where variable timestep is used instead of fixed
+      console.warn(
+        `DeltaTime mismatch: ${deltaSeconds} vs ${expectedDelta}. Using provided deltaTime.`,
+      );
+    }
+
+    // If no movement input, don't adjust position
+    if (input.dx === 0 && input.dy === 0) {
+      return;
+    }
+
+    // Ensure player has required extensions
+    if (!player.hasExt(ClientPositionable)) {
+      return;
+    }
+
+    const currentPosition = player.getPosition();
+    const poolManager = PoolManager.getInstance();
+    const direction = normalizeVector(poolManager.vector2.claim(input.dx, input.dy));
+
+    // Check if player can sprint based on stamina (must match server logic)
+    const hasStamina = player.getStamina() > 0;
+    const canSprint = input.sprint && hasStamina;
+    const config = this.getConfig();
+    const speedMultiplier = canSprint ? config.sprintMultiplier : 1;
+
+    const speed = config.playerSpeed * speedMultiplier;
+    let moveX = direction.x * speed * deltaSeconds;
+    let moveY = direction.y * speed * deltaSeconds;
+
+    let nextX = currentPosition.x + moveX;
+    let nextY = currentPosition.y;
+
+    if (collidables && player.hasExt(ClientCollidable) && player.hasExt(ClientPositionable)) {
+      const { blocked, adjusted } = this.blockIfCollides(
+        player,
+        nextX,
+        nextY,
+        collidables,
+        entities,
+      );
+      if (blocked) {
+        nextX = adjusted.x;
+        moveX = nextX - currentPosition.x;
+      }
+    }
+
+    nextY = currentPosition.y + moveY;
+    if (collidables && player.hasExt(ClientCollidable) && player.hasExt(ClientPositionable)) {
+      const { blocked, adjusted } = this.blockIfCollides(
+        player,
+        nextX,
+        nextY,
+        collidables,
+        entities,
+      );
+      if (blocked) {
+        nextY = adjusted.y;
+        moveY = nextY - currentPosition.y;
+      }
+    }
+
+    const next = poolManager.vector2.claim(nextX, nextY);
+    player.setPosition(next);
+
+    // Update client-side velocity to reflect actual allowed move
+    if (player.hasExt(ClientMovable)) {
+      const actualDx = moveX / Math.max(deltaSeconds, 1e-6);
+      const actualDy = moveY / Math.max(deltaSeconds, 1e-6);
+      player.getExt(ClientMovable).setVelocity(poolManager.vector2.claim(actualDx, actualDy));
+    }
+  }
+
+  private blockIfCollides(
+    player: PlayerClient,
+    proposedX: number,
+    proposedY: number,
+    collidables: number[][],
+    entities: ClientEntityBase[],
+  ): { blocked: boolean; adjusted: { x: number; y: number } } {
+    const positionable = player.getExt(ClientPositionable);
+    const collidable = player.getExt(ClientCollidable);
+
+    const size = collidable.getSize();
+    const currentPos = positionable.getPosition();
+    const currentHit = collidable.getHitBox();
+    const offsetX = currentHit.x - currentPos.x;
+    const offsetY = currentHit.y - currentPos.y;
+
+    const hitbox = {
+      x: proposedX + offsetX,
+      y: proposedY + offsetY,
+      width: size.x,
+      height: size.y,
+    };
+
+    // Check collision with map tiles
+    if (this.overlapsAnyCollidable(hitbox, collidables)) {
+      return { blocked: true, adjusted: { x: currentPos.x, y: currentPos.y } };
+    }
+
+    // Check collision with entities
+    if (this.overlapsAnyEntity(hitbox, entities, player.getId())) {
+      return { blocked: true, adjusted: { x: currentPos.x, y: currentPos.y } };
+    }
+
+    return { blocked: false, adjusted: { x: proposedX, y: proposedY } };
+  }
+
+  /**
+   * Reconciles the local player's position towards the server's authoritative position
+   * using enhanced reconciliation with adaptive lerp.
+   * This runs after client prediction to gradually correct any divergence.
+   *
+   * @deprecated Use ReconciliationManager.reconcile directly instead
+   */
+  reconcileWithServerPosition(player: PlayerClient): void {
+    // Get the server's authoritative position (if available)
+    const serverPos = (player as any).serverGhostPos as Vector2 | null;
+
+    if (!serverPos || !player.hasExt(ClientPositionable)) {
+      return;
+    }
+
+    // Use enhanced reconciliation manager
+    this.reconciliationManager.reconcile(player, serverPos);
+  }
+
+  private overlapsAnyCollidable(
+    hit: { x: number; y: number; width: number; height: number },
+    grid: number[][],
+  ): boolean {
+    const tileSize = getConfig().world.TILE_SIZE;
+    const minCol = Math.max(0, Math.floor(hit.x / tileSize));
+    const minRow = Math.max(0, Math.floor(hit.y / tileSize));
+    const maxCol = Math.min(
+      grid[0]?.length ? grid[0].length - 1 : 0,
+      Math.floor((hit.x + hit.width - 1) / tileSize),
+    );
+    const maxRow = Math.min(
+      grid.length ? grid.length - 1 : 0,
+      Math.floor((hit.y + hit.height - 1) / tileSize),
+    );
+
+    for (let r = minRow; r <= maxRow; r++) {
+      const row = grid[r];
+      if (!row) continue;
+      for (let c = minCol; c <= maxCol; c++) {
+        const tile = row[c];
+        if (tile !== -1) return true;
+      }
+    }
+    return false;
+  }
+
+  private overlapsAnyEntity(
+    playerHitbox: Hitbox,
+    entities: ClientEntityBase[],
+    playerEntityId: number,
+  ): boolean {
+    for (const entity of entities) {
+      // Skip the player entity itself
+      if (entity.getId() === playerEntityId) {
+        continue;
+      }
+
+      // Skip entities that are configured as passthrough (players can walk through them)
+      const entityType = entity.getType();
+      const itemConfig = itemRegistry.get(entityType);
+      if (itemConfig?.isPassthrough) {
+        continue;
+      }
+
+      // Only check collision with entities that have collidable extension
+      if (!entity.hasExt(ClientCollidable)) {
+        continue;
+      }
+
+      const collidable = entity.getExt(ClientCollidable);
+
+      // Skip if collision is disabled for this entity
+      if (!collidable.isEnabled()) {
+        continue;
+      }
+
+      const entityHitbox = collidable.getHitBox();
+
+      if (isColliding(playerHitbox, entityHitbox)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+}

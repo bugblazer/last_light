@@ -1,0 +1,32 @@
+{
+  "include": ["**/*.ts", "**/*.tsx", "../game-client/src/**/*.ts", "../game-shared/src/**/*.ts"],
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./src/*"],
+      "@/*": ["../game-client/src/*"],
+      "@shared/*": ["../game-shared/src/*"],
+      "@events/*": ["../game-shared/src/events/*"]
+    },
+    "noEmit": true
+  }
+}
