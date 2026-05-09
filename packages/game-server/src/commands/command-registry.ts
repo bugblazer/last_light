@@ -71,10 +71,10 @@ export class CommandRegistry {
     // Check admin privileges if required
     if (command.requiresAdmin) {
       if (!this.isAdmin(adminPassword)) {
-        return `Command /${commandName} requires admin privileges. ${
+        return `/${commandName} requires admin privileges. ${
           ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD
             ? ""
-            : "Set the admin password in localStorage with key 'admin_password'."
+            : ""
         }`;
       }
     }

@@ -12,7 +12,7 @@ export const votingConfig = {
    * Feature flag to enable/disable game mode voting
    * When false: All games default to waves mode, no voting panel shown
    */
-  ENABLE_GAME_MODES: false,
+  ENABLE_GAME_MODES: true,
 
   /**
    * Duration of the voting phase in milliseconds
