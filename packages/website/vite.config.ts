@@ -10,6 +10,7 @@ export default defineConfig(() => {
   return {
     server: {
       port: 3000,
+      allowedHosts: ["lastlight.bugblazer.dev"],
     },
     plugins: [
       tsConfigPaths({ projects: [".", "../game-shared", "../game-client"] }),
