@@ -123,14 +123,14 @@ export function InstructionPanel({ isOpen, onClose }: InstructionPanelProps) {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-300">Chat:</span>
-                <span className="font-mono">ENTER</span>
+                <span className="font-mono">Y</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-300">Player List:</span>
                 <span className="font-mono">TAB</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-300">Mute Sound:</span>
+                <span className="text-gray-300">Map:</span>
                 <span className="font-mono">M</span>
               </div>
               <div className="flex justify-between">
