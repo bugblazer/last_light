@@ -37,3 +37,9 @@ build
 
 .DS_Store
 .vscode
+
+# SSH keys
+lastLightSSH
+lastLightSSH.pub
+*.pem
+*.key

@@ -5,3 +5,8 @@ scratch.txt
 tmp/
 dependency-graph.svg
 .env
+# SSH keys
+lastLightSSH
+lastLightSSH.pub
+*.pem
+*.key

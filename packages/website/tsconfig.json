@@ -1,6 +1,7 @@
 {
   "include": ["**/*.ts", "**/*.tsx", "../game-client/src/**/*.ts", "../game-shared/src/**/*.ts"],
   "compilerOptions": {
+    "ignoreDeprecations" : "6.0",
     "strict": false,
     "noImplicitAny": false,
     "strictNullChecks": false,
