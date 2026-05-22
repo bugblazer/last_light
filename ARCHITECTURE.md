@@ -73,7 +73,7 @@
 ### Workspace Configuration
 
 ```
-survive-the-night/
+last_light/
 ├── packages/
 │   ├── game-server/     # Server application (Express + Socket.io)
 │   ├── game-client/     # Canvas-based game client
@@ -86,18 +86,18 @@ survive-the-night/
 
 **game-server** depends on:
 
-- `@survive-the-night/game-shared` (types, constants)
+- `@last_light/game-shared` (types, constants)
 - express, socket.io, dotenv, obscenity (bad word filtering)
 
 **game-client** depends on:
 
-- `@survive-the-night/game-server` (for types in development)
-- `@survive-the-night/game-shared` (types, constants)
+- `@last_light/game-server` (for types in development)
+- `@last_light/game-shared` (types, constants)
 - socket.io-client
 
 **website** depends on:
 
-- `@survive-the-night/game-shared` (types, constants)
+- `@last_light/game-shared` (types, constants)
 - react, react-router 7, @tanstack/react-query, zustand (state), tailwindcss
 
 **game-shared** is a pure TypeScript library with no external dependencies
@@ -1004,7 +1004,7 @@ Client Frame (60 FPS, ~16ms):
 ### Docker Containerization
 
 ```
-survive-the-night/
+last_light/
 ├── Dockerfile (website)    - Node/React build
 ├── Dockerfile (game-server) - Node/TypeScript
 └── docker-compose.yml      - Orchestration
