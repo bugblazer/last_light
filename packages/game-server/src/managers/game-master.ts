@@ -16,9 +16,9 @@ interface ZombieType {
 }
 
 // Constants
-const MAX_TOTAL_ZOMBIES = 200;
+const MAX_TOTAL_ZOMBIES = 80;
 const BASE_ZOMBIES = 6;
-const BASE_ZOMBIES_PER_WAVE = 3;
+const BASE_ZOMBIES_PER_WAVE = 0.75;
 const ZOMBIES_PER_PLAYER_PER_WAVE = 3;
 
 const ZOMBIE_TYPES: ZombieType[] = [
@@ -42,7 +42,7 @@ export class GameMaster {
     // Calculate total zombies based on players and wave number
     const playerCount = this.gameManagers.getEntityManager().getPlayerEntities().length;
     const additionalZombiesPerWave =
-      BASE_ZOMBIES_PER_WAVE + ZOMBIES_PER_PLAYER_PER_WAVE * playerCount;
+      BASE_ZOMBIES_PER_WAVE + Math.ceil(ZOMBIES_PER_PLAYER_PER_WAVE * playerCount);
     const baseZombies = BASE_ZOMBIES;
     const additionalZombies = (waveNumber - 1) * additionalZombiesPerWave;
     const totalZombies = Math.min(baseZombies + additionalZombies, MAX_TOTAL_ZOMBIES);
