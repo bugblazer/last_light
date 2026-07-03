@@ -198,11 +198,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { history } = get();
     if (history.length === 0) return;
 
-    const previousState = history[history.length - 1];
+    const previousState = history[history.length - 1]; //peek at top
     set({
       groundGrid: previousState.ground,
       collidablesGrid: previousState.collidables,
-      history: history.slice(0, -1),
+      history: history.slice(0, -1), //pop the top
     });
   },
 
