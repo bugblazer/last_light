@@ -46,6 +46,17 @@ connect.
 | **A guest waiting for the host** | **Infection mode** |
 | ![Guest waiting for the host to start](docs/screenshots/guest-waiting.png) | ![Infection mode](docs/screenshots/infection.png) |
 
+### Build it yourself
+
+The LAN edition's source is in [`packages/lan`](packages/lan), with a full description of each piece
+in its [README](packages/lan/README.md). From the repo root:
+
+```bash
+npm install
+npm run lan:dev           # build and run the LAN server with Node (http://localhost:3001)
+npm run lan:package:win   # build packages/lan/release/LastLight.exe
+```
+
 LAN edition by [bugblazer](https://bugblazer.dev). Art credits are in [CREDITS.md](CREDITS.md).
 
 ## Developing the game

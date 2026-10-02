@@ -1,0 +1,29 @@
+@import "../../website/src/styles/app.css";
+@source "./";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #000;
+  overflow: hidden;
+  font-family: "Oswald", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Mode-select key art: sized so the logo always fits (it sits in the top ~35% of the art) */
+.lan-banner {
+  height: min(30vh, 21vw);
+  min-height: 80px;
+}
+@media (max-height: 720px) {
+  .lan-banner {
+    height: min(20vh, 21vw);
+  }
+}
+
+/* Landing key art: full logo + campfire, height tied to width so nothing is cropped */
+.landing-banner {
+  height: min(56vh, 44vw);
+  min-height: 160px;
+}

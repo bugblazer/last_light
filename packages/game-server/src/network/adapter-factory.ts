@@ -1,6 +1,7 @@
 import { IServerAdapter } from "@shared/network/server-adapter";
 import { SocketIOServerAdapter } from "./socketio-server-adapter";
 import { UWebSocketsServerAdapter } from "./uwebsockets-server-adapter";
+import { WsServerAdapter } from "./ws-server-adapter";
 import { Server as HttpServer } from "http";
 import { getConfig } from "@shared/config";
 
@@ -13,7 +14,9 @@ export function createServerAdapter(
 ): IServerAdapter {
   const implementation = getConfig().network.WEBSOCKET_IMPLEMENTATION;
 
-  if (implementation === "uwebsockets") {
+  if (implementation === "ws") {
+    return new WsServerAdapter(httpServer);
+  } else if (implementation === "uwebsockets") {
     return new UWebSocketsServerAdapter(httpServer, corsOptions);
   } else {
     // Default to Socket.IO

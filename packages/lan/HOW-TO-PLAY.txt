@@ -1,0 +1,76 @@
+LAST LIGHT - LAN EDITION
+========================
+
+Play Last Light with friends on the same Wi-Fi. No internet or accounts needed.
+
+
+HOSTING (one person)
+--------------------
+1. Double-click LastLight.exe.
+   - If Windows shows "Windows protected your PC", click "More info" and then
+     "Run anyway". The game isn't code-signed, so Windows warns about it.
+   - If Windows Firewall asks, tick "Private networks" and click "Allow access".
+     Friends can't connect without this.
+2. A black console window opens and the game's home page opens in your
+   browser. Enter a player name, pick a character color, and click PLAY.
+3. Choose the game mode for the first match, then click "Start":
+     - Waves ......... Co-op. Survive the night through incoming zombie
+                       waves and protect your base.
+     - Battle Royale . Solo. Fight for survival against humans and zombies.
+                       The last one standing wins.
+     - Infection ..... One random player becomes the zombie. Humans win by
+                       surviving. The zombie wins by infecting everyone.
+   (Keys: 1-3 to choose, Enter to start.) After each match, everyone votes
+   on the next mode.
+4. The console window (and the in-game "Friends join at" box, bottom-left)
+   shows the join address, for example:
+
+       http://192.168.1.23:3001
+
+   Keep the console window open while you play. Closing it stops the game.
+
+
+JOINING (everyone else)
+-----------------------
+1. Connect to the SAME Wi-Fi network as the host.
+2. Open Chrome, Edge or Firefox and go to the address the host gives you,
+   e.g.  http://192.168.1.23:3001
+   Nothing needs to be installed. Players who join this way don't need
+   LastLight.exe.
+3. On the home page, enter a player name, pick a color and click PLAY.
+   You'll see the game modes while the host chooses, and you join
+   automatically once the match starts.
+
+The game needs a keyboard and mouse. Phones and tablets are not supported.
+
+
+PROFILES AND LEADERBOARD
+------------------------
+* Your name and color are saved in your browser on your own device, so
+  there are no accounts or logins. Use the same browser each time to keep
+  your stats.
+* The leaderboard ("Top survivors" on the home page) lists everyone who
+  has played on the host computer: best wave, zombie kills and waves
+  survived. It is saved on the host computer in
+      %APPDATA%\LastLight\leaderboard.json
+  and carries over between sessions. Delete that file to reset it.
+* Chat cheat commands (/spawn, /mode, ...) are switched off so the
+  leaderboard stays fair.
+
+
+TROUBLESHOOTING
+---------------
+* Friends see "This site can't be reached":
+    - Check that everyone is on the same Wi-Fi network (not a guest network).
+    - On the host PC, set the Wi-Fi network to "Private":
+      Settings > Network & Internet > Wi-Fi > (your network) > Private network.
+    - Allow LastLight.exe through the firewall:
+      Start menu > "Allow an app through Windows Firewall" > Change settings >
+      tick LastLight.exe for Private (add it with "Allow another app" if it's
+      missing).
+    - Some public, school or office Wi-Fi networks block devices from talking
+      to each other. A phone hotspot works as a fallback.
+* "Ports ... are all in use": the game is probably already running. Close the
+  other LastLight window. The game tries ports 3001 to 3010 automatically.
+* Using a different port: open Command Prompt in this folder and run
+      set PORT=4000 && LastLight.exe

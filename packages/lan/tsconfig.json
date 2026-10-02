@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "strict": false,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["../website/src/*"],
+      "@shared/*": ["../game-shared/src/*"],
+      "@events/*": ["../game-shared/src/events/*"]
+    },
+    "noEmit": true
+  },
+  "include": ["src/**/*", "server/**/*"]
+}
