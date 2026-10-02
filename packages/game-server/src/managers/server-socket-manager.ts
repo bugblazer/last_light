@@ -18,6 +18,7 @@ import { TickPerformanceTracker } from "@/util/tick-performance-tracker";
 import { IServerAdapter } from "@shared/network/server-adapter";
 import { ISocketAdapter } from "@shared/network/socket-adapter";
 import { createServerAdapter } from "@/network/adapter-factory";
+import { getHttpRequestHandler } from "@/network/http-request-handler";
 import { BufferManager } from "@/broadcasting/buffer-manager";
 import { Broadcaster as BroadcastingBroadcaster } from "@/broadcasting/broadcaster";
 import { PlayerJoinedEvent } from "../../../game-shared/src/events/server-sent/events/player-joined-event";
@@ -58,25 +59,19 @@ export class ServerSocketManager implements Broadcaster {
     this.port = port;
     this.bufferManager = new BufferManager();
 
-    const implementation = getConfig().network.WEBSOCKET_IMPLEMENTATION;
-
     // Create HTTP server for websocket adapter
     // Note: Biome editor API is now in a separate service (biome-editor-server)
-    if (implementation === "socketio") {
-      // For Socket.IO, create a minimal HTTP server
-      this.httpServer = createServer((req, res) => {
-        // Minimal HTTP handler - websocket server doesn't handle HTTP routes
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not Found");
-      });
-    } else {
-      // For uWebSockets, create a minimal HTTP server
-      this.httpServer = createServer((req, res) => {
-        // Minimal HTTP handler - uWebSockets will handle everything
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not Found");
-      });
-    }
+    // A custom handler (e.g. static file serving in the LAN build) can be registered
+    // via setHttpRequestHandler(); otherwise every plain HTTP request gets a 404.
+    const customHttpHandler = getHttpRequestHandler();
+    this.httpServer = createServer((req, res) => {
+      if (customHttpHandler) {
+        customHttpHandler(req, res);
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not Found");
+    });
 
     // Create server adapter based on configuration
     this.io = createServerAdapter(this.httpServer, {
@@ -347,8 +342,8 @@ export class ServerSocketManager implements Broadcaster {
   public listen(): void {
     const implementation = getConfig().network.WEBSOCKET_IMPLEMENTATION;
 
-    if (implementation === "uwebsockets") {
-      // uWebSockets listens directly on the port - no HTTP server needed
+    if (implementation === "uwebsockets" || implementation === "ws") {
+      // uWebSockets listens directly on the port; the ws adapter listens via its HTTP server
       this.io.listen(this.port, () => {});
     } else {
       // Socket.IO: Listen using the HTTP server directly (which has Express attached)

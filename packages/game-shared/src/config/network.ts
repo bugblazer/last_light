@@ -7,13 +7,21 @@
  * ========================================================================
  */
 
-export type WebSocketImplementation = "socketio" | "uwebsockets";
+/**
+ * - "uwebsockets": native uWebSockets.js server (production default)
+ * - "ws": pure-JS `ws` server speaking the same wire protocol (LAN / offline build)
+ * - "socketio": legacy Socket.IO transport
+ *
+ * Browsers always use the native WebSocket client, which works with both
+ * "uwebsockets" and "ws" servers.
+ */
+export type WebSocketImplementation = "socketio" | "uwebsockets" | "ws";
 
 const getWebSocketImplementation = (): WebSocketImplementation => {
   // Check environment variable first (server-side)
   if (typeof process !== "undefined" && process.env.WEBSOCKET_IMPLEMENTATION) {
     const impl = process.env.WEBSOCKET_IMPLEMENTATION.toLowerCase();
-    if (impl === "socketio" || impl === "uwebsockets") {
+    if (impl === "socketio" || impl === "uwebsockets" || impl === "ws") {
       return impl;
     }
   }

@@ -15,7 +15,12 @@ export class GameScene extends Scene {
     const host = isBrowser ? window.location.hostname || "localhost" : "localhost";
     const protocol = isBrowser && window.location.protocol === "https:" ? "wss" : "ws";
     const defaultServerUrl = `${protocol}://${host}:3001`;
-    this.serverUrl = import.meta.env.VITE_WSS_URL?.trim() || defaultServerUrl;
+    // A host page (e.g. the LAN build) can override the server URL at runtime
+    const runtimeServerUrl = isBrowser ? (window as any).__GAME_SERVER_URL__ : undefined;
+    this.serverUrl =
+      (typeof runtimeServerUrl === "string" && runtimeServerUrl.trim()) ||
+      import.meta.env.VITE_WSS_URL?.trim() ||
+      defaultServerUrl;
 
     // Get loaded asset and sound managers from scene manager
     const assetManager = sceneManager?.getAssetManager();

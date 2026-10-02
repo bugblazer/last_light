@@ -1,0 +1,31 @@
+{
+  "name": "@survive-the-night/lan",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Downloadable LAN (local Wi-Fi) multiplayer build of Last Light",
+  "scripts": {
+    "dev": "npm run build && node dist/last-light-server.cjs",
+    "build:client": "vite build",
+    "build:server": "node scripts/build-server.mjs",
+    "build": "npm run build:client && npm run build:server",
+    "package:win": "npm run build && node scripts/package-win.mjs",
+    "start": "node dist/last-light-server.cjs"
+  },
+  "dependencies": {
+    "@survive-the-night/game-client": "*",
+    "@survive-the-night/game-server": "*",
+    "@survive-the-night/game-shared": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.17",
+    "@vitejs/plugin-react": "^5.1.1",
+    "esbuild": "^0.25.12",
+    "pe-library": "^1.0.1",
+    "postject": "^1.0.0-alpha.6",
+    "resedit": "^2.0.3",
+    "vite": "^7.2.4",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}

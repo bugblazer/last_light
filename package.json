@@ -13,7 +13,10 @@
     "build:server": "npm run build --workspace=packages/game-server",
     "test:game-client": "npm run test --workspace=packages/game-client",
     "test:game-server": "npm run test --workspace=packages/game-server",
-    "depcruiser": "depcruise ./packages --exclude \"^packages/build\" --include-only \"packages\" --output-type dot | dot -T svg > dependency-graph.svg"
+    "depcruiser": "depcruise ./packages --exclude \"^packages/build\" --include-only \"packages\" --output-type dot | dot -T svg > dependency-graph.svg",
+    "lan:dev": "npm run dev --workspace=packages/lan",
+    "lan:build": "npm run build --workspace=packages/lan",
+    "lan:package:win": "npm run package:win --workspace=packages/lan"
   },
   "workspaces": [
     "packages/*"
