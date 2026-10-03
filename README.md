@@ -1,5 +1,7 @@
 # Last Light
 
+![Last Light: a real-time multiplayer zombie survival game](docs/screenshots/title.jpg)
+
 A top-down pixel-art survival game for friends. During the day you explore for wood, cloth, gasoline
 and coins, craft walls, spike traps, sentry guns and torches, and fortify a camp. At night the zombies
 come, and every night there are more of them.
